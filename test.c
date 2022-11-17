@@ -387,7 +387,7 @@ void test_matrix_mul_and_transpose(void)
     printf("transpose test ok.\n");
 
     assert(tmp2->rows == 9 && tmp2->cols == 8);
-    assert((err = multiply_matrix(tmp1, tmp2, &tmp3)) == COMPLETED);
+    assert((err = multiply_matrix_ver_1(tmp1, tmp2, &tmp3)) == COMPLETED);
     assert(tmp3 != NULL);
     assert(tmp3 != tmp1 && tmp3 != tmp2);
 
@@ -422,7 +422,7 @@ void test_matrix_mul_performance(void)
             op2->arr[i * sz + j] = (float)rand();
         }
 
-    assert((err = multiply_matrix(op1, op2, &op3)) == COMPLETED);
+    assert((err = multiply_matrix_ver_1(op1, op2, &op3)) == COMPLETED);
 
     delete_matrix(&op1);
     delete_matrix(&op2);

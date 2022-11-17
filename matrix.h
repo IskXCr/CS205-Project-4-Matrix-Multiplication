@@ -59,7 +59,11 @@ matrix_errno add_matrix(const matrix addend1, const matrix addend2, matrix *resu
 
 matrix_errno subtract_matrix(const matrix subtrahend, const matrix subtractor, matrix *result);
 
-matrix_errno multiply_matrix(const matrix op1, const matrix op2, matrix *result);
+matrix_errno multiply_matrix_plain(const matrix op1, const matrix op2, matrix *result);
+
+matrix_errno multiply_matrix_ver_1(const matrix op1, const matrix op2, matrix *result);
+
+matrix_errno multiply_matrix_ver_2(const matrix op1, const matrix op2, matrix *result);
 
 matrix_errno add_scalar(const matrix src, matrix *result, float val);
 

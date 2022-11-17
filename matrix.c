@@ -336,16 +336,126 @@ matrix_errno subtract_matrix(const matrix subtrahend, const matrix subtractor, m
     return _do_emma_on_matrices(subtrahend, subtractor, result, SUBTRACT);
 }
 
-/* Multiply two matrices and store the result in a third matrix.
+/* This function multiplies two matrices plainly.
+
+   Multiply two matrices and store the result in a third matrix.
    The result matrix can refer to either op1 or op2 at the same time, but the pointer to the result matrix cannot be NULL.
-   All operands, including the result, are supposed to be NULL or valid (i.e. created using function create_matrix()),
-   so that an invalid pointer won't be dereferenced.
-   If not, undefined behaviour will occur. If the result matrix isn't able to store the sum, i.e.,
-   either it is NULL or the size doesn't match, the result matrix would be modified to match the need.
+   All operands, including the result, are supposed to be NULL or valid (i.e. created using function create_matrix()), so that an invalid pointer won't be dereferenced.
+   If not, undefined behaviour will occur. If the result matrix isn't able to store the sum, i.e., either it is NULL or the size doesn't match, the result matrix would be modified to match the need.
 
    If errors occurred during the operation (for example, operand size unmatches), do nothing on the result matrix.
+   
    Returns the corresonding errno code upon failure. */
-matrix_errno multiply_matrix(const matrix op1, const matrix op2, matrix *result)
+matrix_errno multiply_matrix_plain(const matrix op1, const matrix op2, matrix *result)
+{
+
+}
+
+/* This function multiplies two matrices by first transposing the righthand matrix, using OpenMP to parallelize computation, and then transposing the result.
+   This function transposes the matrices to gain linear access to elements.
+
+   Multiply two matrices and store the result in a third matrix.
+   The result matrix can refer to either op1 or op2 at the same time, but the pointer to the result matrix cannot be NULL.
+   All operands, including the result, are supposed to be NULL or valid (i.e. created using function create_matrix()), so that an invalid pointer won't be dereferenced.
+   If not, undefined behaviour will occur. If the result matrix isn't able to store the sum, i.e., either it is NULL or the size doesn't match, the result matrix would be modified to match the need.
+
+   If errors occurred during the operation (for example, operand size unmatches), do nothing on the result matrix.
+   
+   Returns the corresonding errno code upon failure. */
+matrix_errno multiply_matrix_ver_1(const matrix op1, const matrix op2, matrix *result)
+{
+    if (op1 == NULL || op2 == NULL)
+        return OP_NULL_PTR;
+
+    size_t r_rows = op1->rows; /* number of rows in the result matrix */
+    size_t r_cols = op2->cols; /* number of columns in the result matrix */
+
+    if (op1->cols != op2->rows)
+        return OP_UNMATCHED_SIZE;
+
+    if (!_is_param_valid(r_rows, r_cols))
+        return OP_EXCEEDED_SIZE;
+
+    float *newarr; /* Used to store the intermediate result */
+
+    /* If result is NULL */
+    if (*result == NULL)
+    {
+        if ((*result = create_matrix(r_cols, r_rows)) == NULL) /* If failed to create a new matrix */
+        {
+            out_of_memory();
+            return OUT_OF_MEMORY;
+        }
+        else
+            newarr = (*result)->arr;
+    }
+    /* Else prepare the result array */
+    else if ((newarr = (float *)malloc((r_rows * r_cols) * sizeof(float))) == NULL)
+    {
+        out_of_memory();
+        return OUT_OF_MEMORY;
+    }
+
+    /* Start multiplication */
+
+    matrix trans2 = NULL; /* Store the transposed op2 */
+    matrix_errno tr_res;  /* Store the transpose result */
+
+    if ((tr_res = transpose_matrix(op2, &trans2)) != COMPLETED)
+    {
+        if (newarr == (*result)->arr) /* Else the result matrix is newly created, delete the result. */
+            delete_matrix(result);
+        else /* If the original result matrix is not empty, only free newarr */
+            free(newarr);
+        return tr_res;
+    }
+
+    size_t c_cnt = op1->cols; /* Cycle count */
+
+    // todo: parallel optimization
+    // implemented: transposed matrices (trans2, result) for faster access speed, loop designed to access elements linearly
+#pragma omp parallel for
+    for (size_t k = 0; k < op2->cols; ++k)
+    {
+#pragma omp parallel for
+        for (size_t m = 0; m < op1->rows; ++m)
+        {
+            float result0 = 0;
+            for (size_t n = 0; n < c_cnt; ++n)
+            {
+                result0 += op1->arr[m * c_cnt + n] * trans2->arr[k * c_cnt + n];
+            }
+            newarr[k * op1->rows + m] = result0;
+        }
+    }
+
+    /* Clean up */
+    delete_matrix(&trans2);
+    (*result)->rows = r_cols;
+    (*result)->cols = r_rows;
+    if ((*result)->arr != newarr)
+    {
+        free((*result)->arr);
+        (*result)->arr = newarr;
+    }
+    transpose_matrix(*result, result); /* Transpose the matrix since it's calculated in transposed form */
+
+    return COMPLETED;
+}
+
+
+/* This function multiplies two matrices by first transposing the righthand matrix, using OpenMP and SIMD to parallelize computation, and then transposing the result.
+   This function transposes the matrices to gain linear access to elements.
+
+   Multiply two matrices and store the result in a third matrix.
+   The result matrix can refer to either op1 or op2 at the same time, but the pointer to the result matrix cannot be NULL.
+   All operands, including the result, are supposed to be NULL or valid (i.e. created using function create_matrix()), so that an invalid pointer won't be dereferenced.
+   If not, undefined behaviour will occur. If the result matrix isn't able to store the sum, i.e., either it is NULL or the size doesn't match, the result matrix would be modified to match the need.
+
+   If errors occurred during the operation (for example, operand size unmatches), do nothing on the result matrix.
+   
+   Returns the corresonding errno code upon failure. */
+matrix_errno multiply_matrix_ver_2(const matrix op1, const matrix op2, matrix *result)
 {
     if (op1 == NULL || op2 == NULL)
         return OP_NULL_PTR;
