@@ -348,7 +348,67 @@ matrix_errno subtract_matrix(const matrix subtrahend, const matrix subtractor, m
    Returns the corresonding errno code upon failure. */
 matrix_errno multiply_matrix_plain(const matrix op1, const matrix op2, matrix *result)
 {
+    if (op1 == NULL || op2 == NULL)
+        return OP_NULL_PTR;
 
+    size_t r_rows = op1->rows; /* number of rows in the result matrix */
+    size_t r_cols = op2->cols; /* number of columns in the result matrix */
+
+    if (op1->cols != op2->rows)
+        return OP_UNMATCHED_SIZE;
+
+    if (!_is_param_valid(r_rows, r_cols))
+        return OP_EXCEEDED_SIZE;
+
+    float *newarr; /* Used to store the intermediate result */
+
+    /* If result is NULL */
+    if (*result == NULL)
+    {
+        if ((*result = create_matrix(r_cols, r_rows)) == NULL) /* If failed to create a new matrix */
+        {
+            out_of_memory();
+            return OUT_OF_MEMORY;
+        }
+        else
+            newarr = (*result)->arr;
+    }
+    /* Else prepare the result array */
+    else if ((newarr = (float *)malloc((r_rows * r_cols) * sizeof(float))) == NULL)
+    {
+        out_of_memory();
+        return OUT_OF_MEMORY;
+    }
+
+    /* Start multiplication */
+
+    size_t c_cnt = op1->cols; /* Cycle count */
+
+    // plain matrix multiplication
+
+    for (size_t i = 0; i < op1->rows; ++i)
+    {
+        for (size_t j = 0; j < op2->cols; ++j)
+        {
+            float result = 0;
+            for (size_t k = 0; k < op1->cols; ++k)
+            {
+                result += op1->arr[i * c_cnt + k] * op2->arr[k * c_cnt + j];
+            }
+            newarr[i * r_cols + j] = result;
+        }
+    }
+
+    /* Clean up */
+    (*result)->rows = r_cols;
+    (*result)->cols = r_rows;
+    if ((*result)->arr != newarr)
+    {
+        free((*result)->arr);
+        (*result)->arr = newarr;
+    }
+
+    return COMPLETED;
 }
 
 /* This function multiplies two matrices by first transposing the righthand matrix, using OpenMP to parallelize computation, and then transposing the result.
@@ -415,17 +475,17 @@ matrix_errno multiply_matrix_ver_1(const matrix op1, const matrix op2, matrix *r
     // todo: parallel optimization
     // implemented: transposed matrices (trans2, result) for faster access speed, loop designed to access elements linearly
 #pragma omp parallel for
-    for (size_t k = 0; k < op2->cols; ++k)
+    for (size_t m = 0; m < op1->rows; ++m)
     {
 #pragma omp parallel for
-        for (size_t m = 0; m < op1->rows; ++m)
+        for (size_t k = 0; k < op2->cols; ++k)
         {
             float result0 = 0;
             for (size_t n = 0; n < c_cnt; ++n)
             {
                 result0 += op1->arr[m * c_cnt + n] * trans2->arr[k * c_cnt + n];
             }
-            newarr[k * op1->rows + m] = result0;
+            newarr[m * r_cols + k] = result0;
         }
     }
 
@@ -438,7 +498,6 @@ matrix_errno multiply_matrix_ver_1(const matrix op1, const matrix op2, matrix *r
         free((*result)->arr);
         (*result)->arr = newarr;
     }
-    transpose_matrix(*result, result); /* Transpose the matrix since it's calculated in transposed form */
 
     return COMPLETED;
 }
@@ -508,17 +567,17 @@ matrix_errno multiply_matrix_ver_2(const matrix op1, const matrix op2, matrix *r
     // todo: parallel optimization
     // implemented: transposed matrices (trans2, result) for faster access speed, loop designed to access elements linearly
 #pragma omp parallel for
-    for (size_t k = 0; k < op2->cols; ++k)
+    for (size_t m = 0; m < op1->rows; ++m)
     {
 #pragma omp parallel for
-        for (size_t m = 0; m < op1->rows; ++m)
+        for (size_t k = 0; k < op2->cols; ++k)
         {
             float result0 = 0;
             for (size_t n = 0; n < c_cnt; ++n)
             {
                 result0 += op1->arr[m * c_cnt + n] * trans2->arr[k * c_cnt + n];
             }
-            newarr[k * op1->rows + m] = result0;
+            newarr[m * r_cols + k] = result0;
         }
     }
 
@@ -531,7 +590,6 @@ matrix_errno multiply_matrix_ver_2(const matrix op1, const matrix op2, matrix *r
         free((*result)->arr);
         (*result)->arr = newarr;
     }
-    transpose_matrix(*result, result); /* Transpose the matrix since it's calculated in transposed form */
 
     return COMPLETED;
 }
