@@ -15,5 +15,6 @@
     atomic_size_t refs; /* Reference to this matrix */
 ```
 3. Fixed loop order in matrix multiplication to avoid tranposing the result. Now the program only tranposes op2 to optimize access speed.
+4. Use ``omp_get_wtime()`` as the appropriate timer.
 
 ## Part 2 - Matrix Multiplication

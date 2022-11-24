@@ -7,6 +7,7 @@
 #include <assert.h>
 #include <math.h>
 #include <time.h>
+#include <omp.h>
 
 /* Definition for ease of use */
 
@@ -43,34 +44,15 @@ void (*test_funcs[])(void) = {&test_matrix_struct,
 
 int main()
 {
-    struct timespec start, end;
-    clock_gettime(CLOCK_MONOTONIC, &start);
+    double start = omp_get_wtime(), end;
 
     size_t test_sz = sizeof(test_funcs) / sizeof(void (*)(void));
     for (size_t i = 0; i < test_sz; ++i)
         (*test_funcs[i])();
 
-    clock_gettime(CLOCK_MONOTONIC, &end);
-    printf("Evaluation result: all tests passed.\nTime elapsed: %ld unit\n", diff(start, end).tv_nsec / 1000000L);
+    end = omp_get_wtime();
+    printf("Evaluation result: all tests passed.\nTime elapsed: %lf s\n", end - start);
     return 0;
-}
-
-/* Get the difference between two time.
-   Reference: https://stackoverflow.com/questions/6749621/how-to-create-a-high-resolution-timer-in-linux-to-measure-program-performance */
-struct timespec diff(struct timespec start, struct timespec end)
-{
-    struct timespec temp;
-    if ((end.tv_nsec - start.tv_nsec) < 0)
-    {
-        temp.tv_sec = end.tv_sec - start.tv_sec - 1;
-        temp.tv_nsec = 1000000000 + end.tv_nsec - start.tv_nsec;
-    }
-    else
-    {
-        temp.tv_sec = end.tv_sec - start.tv_sec;
-        temp.tv_nsec = end.tv_nsec - start.tv_nsec;
-    }
-    return temp;
 }
 
 void print_test_init(const char *s)
