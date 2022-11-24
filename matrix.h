@@ -7,23 +7,24 @@
 
 #include <stddef.h>
 #include <stdio.h>
+#include <stdatomic.h>
 
 /* Struct and enum declarations */
 
-/* Pointer to a matrix_struct */
+/* Pointer to a matrix_struct. Matrix can only be modified when there is exactly one copy. */
 typedef struct matrix_struct *matrix;
 
 /* Matrix struct for storing elements of a matrix */
 typedef struct matrix_struct
 {
     /* Properties of a matrix */
-    size_t rows; /* Number of rows */
-    size_t cols; /* Number of columns */
-    size_t refs;    /* Reference to this matrix */
+    size_t rows;        /* Number of rows */
+    size_t cols;        /* Number of columns */
+    atomic_size_t refs; /* Reference to this matrix */
 
     /* Linear array for storing actual elements. Access offset to the actual element
        is (r * cols + c), where r is row index and c is column index, all starting from 0. */
-    float *arr;  
+    float *arr;
 
     /* For reuse of structs */
     struct matrix_struct *next; /* When this matrix is recycled, points to the next recycled element in a linked list. If not, next has garbage value */
@@ -49,7 +50,7 @@ void delete_matrix(matrix *m);
 
 matrix_errno copy_matrix(matrix *dest, const matrix src);
 
-matrix ref_matrix(const matrix m);
+matrix ref_matrix(matrix m);
 
 int test_equality(const matrix op1, const matrix op2, float ERR);
 

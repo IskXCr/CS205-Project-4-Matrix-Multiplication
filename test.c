@@ -44,13 +44,13 @@ void (*test_funcs[])(void) = {&test_matrix_struct,
 int main()
 {
     struct timespec start, end;
-    clock_gettime(CLOCK_REALTIME, &start);
+    clock_gettime(CLOCK_MONOTONIC, &start);
 
     size_t test_sz = sizeof(test_funcs) / sizeof(void (*)(void));
     for (size_t i = 0; i < test_sz; ++i)
         (*test_funcs[i])();
 
-    clock_gettime(CLOCK_REALTIME, &end);
+    clock_gettime(CLOCK_MONOTONIC, &end);
     printf("Evaluation result: all tests passed.\nTime elapsed: %ld unit\n", diff(start, end).tv_nsec / 1000000L);
     return 0;
 }
@@ -422,7 +422,7 @@ void test_matrix_mul_performance(void)
             op2->arr[i * sz + j] = (float)rand();
         }
 
-    assert((err = multiply_matrix_ver_1(op1, op2, &op3)) == COMPLETED);
+    assert((err = multiply_matrix_plain(op1, op2, &op3)) == COMPLETED);
 
     delete_matrix(&op1);
     delete_matrix(&op2);

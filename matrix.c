@@ -26,8 +26,6 @@ typedef enum op_code
 
 /* Global Variables */
 
-static matrix _recycled_list = NULL; /* Linked list of recycled matrices. Those recycled matrices have garbage values and should NEVER be used. */
-
 static const size_t SZT_MAX = (size_t)-1; /* The maximum size of size_t */
 
 /* Functions*/
@@ -52,19 +50,11 @@ matrix create_matrix(const size_t rows, const size_t cols)
     matrix result; /* Store the result matrix */
     float *arr;    /* Store the result float array */
 
-    if (_recycled_list != NULL) /* Reuse existing one first. */
+    result = (matrix)malloc(sizeof(matrix_struct));
+    if (result == NULL)
     {
-        result = _recycled_list;
-        _recycled_list = _recycled_list->next;
-    }
-    else
-    {
-        result = (matrix)malloc(sizeof(matrix_struct));
-        if (result == NULL)
-        {
-            out_of_memory();
-            return NULL;
-        }
+        out_of_memory();
+        return NULL;
     }
     arr = (float *)malloc(rows * cols * sizeof(float));
     if (arr == NULL)
@@ -99,8 +89,7 @@ void delete_matrix(matrix *m)
     if ((*m)->refs == 0)
     {
         free((*m)->arr);
-        (*m)->next = _recycled_list;
-        _recycled_list = *m;
+        free(*m);
     }
 
     *m = NULL;
@@ -148,7 +137,7 @@ matrix_errno copy_matrix(matrix *dest, const matrix src)
 /* Return a reference to the target matrix. If refs count exceeds the upper bound, return NULL.
 
    If a NULL pointer is received, do nothing and return NULL. */
-matrix ref_matrix(const matrix m)
+matrix ref_matrix(matrix m)
 {
     if (m != NULL)
     {
@@ -344,7 +333,7 @@ matrix_errno subtract_matrix(const matrix subtrahend, const matrix subtractor, m
    If not, undefined behaviour will occur. If the result matrix isn't able to store the sum, i.e., either it is NULL or the size doesn't match, the result matrix would be modified to match the need.
 
    If errors occurred during the operation (for example, operand size unmatches), do nothing on the result matrix.
-   
+
    Returns the corresonding errno code upon failure. */
 matrix_errno multiply_matrix_plain(const matrix op1, const matrix op2, matrix *result)
 {
@@ -393,7 +382,7 @@ matrix_errno multiply_matrix_plain(const matrix op1, const matrix op2, matrix *r
             float result = 0;
             for (size_t k = 0; k < op1->cols; ++k)
             {
-                result += op1->arr[i * c_cnt + k] * op2->arr[k * c_cnt + j];
+                result += op1->arr[i * c_cnt + k] * op2->arr[k * op2->cols + j];
             }
             newarr[i * r_cols + j] = result;
         }
@@ -420,7 +409,7 @@ matrix_errno multiply_matrix_plain(const matrix op1, const matrix op2, matrix *r
    If not, undefined behaviour will occur. If the result matrix isn't able to store the sum, i.e., either it is NULL or the size doesn't match, the result matrix would be modified to match the need.
 
    If errors occurred during the operation (for example, operand size unmatches), do nothing on the result matrix.
-   
+
    Returns the corresonding errno code upon failure. */
 matrix_errno multiply_matrix_ver_1(const matrix op1, const matrix op2, matrix *result)
 {
@@ -502,7 +491,6 @@ matrix_errno multiply_matrix_ver_1(const matrix op1, const matrix op2, matrix *r
     return COMPLETED;
 }
 
-
 /* This function multiplies two matrices by first transposing the righthand matrix, using OpenMP and SIMD to parallelize computation, and then transposing the result.
    This function transposes the matrices to gain linear access to elements.
 
@@ -512,7 +500,7 @@ matrix_errno multiply_matrix_ver_1(const matrix op1, const matrix op2, matrix *r
    If not, undefined behaviour will occur. If the result matrix isn't able to store the sum, i.e., either it is NULL or the size doesn't match, the result matrix would be modified to match the need.
 
    If errors occurred during the operation (for example, operand size unmatches), do nothing on the result matrix.
-   
+
    Returns the corresonding errno code upon failure. */
 matrix_errno multiply_matrix_ver_2(const matrix op1, const matrix op2, matrix *result)
 {
