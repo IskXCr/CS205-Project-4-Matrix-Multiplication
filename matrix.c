@@ -10,6 +10,7 @@
 #include <float.h>
 #include <math.h>
 #include <ctype.h>
+#include <omp.h>
 
 /* Definitions for ease */
 
@@ -56,7 +57,7 @@ matrix create_matrix(const size_t rows, const size_t cols)
         out_of_memory();
         return NULL;
     }
-    arr = (float *)malloc(rows * cols * sizeof(float));
+    arr = (float *)aligned_alloc(32, rows * cols * sizeof(float));
     if (arr == NULL)
     {
         out_of_memory();
@@ -68,7 +69,6 @@ matrix create_matrix(const size_t rows, const size_t cols)
     result->cols = cols;
     result->arr = arr;
     result->refs = 1;
-    result->next = NULL;
 
     for (size_t i = 0; i < rows * cols; ++i)
         result->arr[i] = 0.0f;
@@ -114,7 +114,7 @@ matrix_errno copy_matrix(matrix *dest, const matrix src)
     if (*dest != NULL && ((*dest)->rows * (*dest)->cols) != target_size)
     {
         float *newarr;
-        if ((newarr = (float *)malloc(target_size * sizeof(float))) == NULL)
+        if ((newarr = (float *)aligned_alloc(32, target_size * sizeof(float))) == NULL)
         {
             out_of_memory();
             return OUT_OF_MEMORY;
@@ -165,6 +165,35 @@ int test_equality(const matrix op1, const matrix op2, float ERR)
     return 1;
 }
 
+// Threshold for primitive tranposing.
+#define _MAT_TRANS_THRESHOLD 8U
+
+/* Cache-oblivious function for recursively transposing a matrix */
+static void
+_transpose_mat(float *src, float *dest, size_t r_offset, size_t c_offset,
+               size_t src_rows, size_t src_cols, size_t rows, size_t cols)
+{
+    if (rows <= _MAT_TRANS_THRESHOLD && cols <= _MAT_TRANS_THRESHOLD)
+    {
+        for (size_t i = r_offset; i < r_offset + rows; ++i)
+            for (size_t j = c_offset; j < c_offset + cols; ++j)
+                dest[j * src_rows + i] = src[i * src_cols + j];
+        return;
+    }
+
+    /* Cut the larger dimension in half. Cut rows first. */
+    if (rows >= cols)
+    {
+        _transpose_mat(src, dest, r_offset, c_offset, src_rows, src_cols, rows / 2, cols);
+        _transpose_mat(src, dest, r_offset + rows / 2, c_offset, src_rows, src_cols, rows - rows / 2, cols);
+    }
+    else
+    {
+        _transpose_mat(src, dest, r_offset, c_offset, src_rows, src_cols, rows, cols / 2);
+        _transpose_mat(src, dest, r_offset, c_offset + cols / 2, src_rows, src_cols, rows, cols - cols / 2);
+    }
+}
+
 /* Transpose a matrix and store the result to a second matrix.
    The result matrix can refer to the src or point to other valid matrix, or simply NULL.
    The pointer to the result matrix cannot be NULL.
@@ -196,15 +225,17 @@ matrix_errno transpose_matrix(const matrix src, matrix *result)
             newarr = (*result)->arr;
     }
     /* Else prepare the result array */
-    else if ((newarr = (float *)malloc((r_rows * r_cols) * sizeof(float))) == NULL)
+    else if ((newarr = (float *)aligned_alloc(32, (r_rows * r_cols) * sizeof(float))) == NULL)
     {
         out_of_memory();
         return OUT_OF_MEMORY;
     }
 
-    for (size_t i = 0; i < s_rows; ++i)
-        for (size_t j = 0; j < s_cols; ++j)
-            newarr[j * r_cols + i] = src->arr[i * s_cols + j];
+    /* Tranpose*/
+    // for (size_t i = 0; i < s_rows; ++i)
+    //     for (size_t j = 0; j < s_cols; ++j)
+    //         newarr[j * r_cols + i] = src->arr[i * s_cols + j];
+    _transpose_mat(src->arr, newarr, 0, 0, src->rows, src->cols, src->rows, src->cols);
 
     /* Clean up */
     (*result)->rows = r_rows;
@@ -256,7 +287,7 @@ _do_emma_on_matrices(const matrix op1, const matrix op2, matrix *result, op_code
             newarr = (*result)->arr;
     }
     /* Else prepare the result array */
-    else if ((newarr = (float *)malloc(size * sizeof(float))) == NULL)
+    else if ((newarr = (float *)aligned_alloc(32, size * sizeof(float))) == NULL)
     {
         out_of_memory();
         return OUT_OF_MEMORY;
@@ -268,18 +299,22 @@ _do_emma_on_matrices(const matrix op1, const matrix op2, matrix *result, op_code
     switch (code)
     {
     case ADD:
+#pragma omp parallel for
         for (size_t i = 0; i < size; ++i)
             newarr[i] = op1->arr[i] + op2->arr[i];
         break;
     case SUBTRACT:
+#pragma omp parallel for
         for (size_t i = 0; i < size; ++i)
             newarr[i] = op1->arr[i] - op2->arr[i];
         break;
     case MULTIPLY:
+#pragma omp parallel for
         for (size_t i = 0; i < size; ++i)
             newarr[i] = op1->arr[i] * op2->arr[i];
         break;
     case DIVIDE:
+#pragma omp parallel for
         for (size_t i = 0; i < size; ++i)
             newarr[i] = op1->arr[i] / op2->arr[i];
         break;
@@ -363,7 +398,7 @@ matrix_errno multiply_matrix_plain(const matrix op1, const matrix op2, matrix *r
             newarr = (*result)->arr;
     }
     /* Else prepare the result array */
-    else if ((newarr = (float *)malloc((r_rows * r_cols) * sizeof(float))) == NULL)
+    else if ((newarr = (float *)aligned_alloc(32, (r_rows * r_cols) * sizeof(float))) == NULL)
     {
         out_of_memory();
         return OUT_OF_MEMORY;
@@ -401,7 +436,7 @@ matrix_errno multiply_matrix_plain(const matrix op1, const matrix op2, matrix *r
 }
 
 /* This function multiplies two matrices by first transposing the righthand matrix, using OpenMP to parallelize computation, and then transposing the result.
-   This function transposes the matrices to gain linear access to elements.
+   This function transposes the matrices to gain sequential access to elements.
 
    Multiply two matrices and store the result in a third matrix.
    The result matrix can refer to either op1 or op2 at the same time, but the pointer to the result matrix cannot be NULL.
@@ -439,7 +474,7 @@ matrix_errno multiply_matrix_ver_1(const matrix op1, const matrix op2, matrix *r
             newarr = (*result)->arr;
     }
     /* Else prepare the result array */
-    else if ((newarr = (float *)malloc((r_rows * r_cols) * sizeof(float))) == NULL)
+    else if ((newarr = (float *)aligned_alloc(32, (r_rows * r_cols) * sizeof(float))) == NULL)
     {
         out_of_memory();
         return OUT_OF_MEMORY;
@@ -459,22 +494,23 @@ matrix_errno multiply_matrix_ver_1(const matrix op1, const matrix op2, matrix *r
         return tr_res;
     }
 
-    size_t c_cnt = op1->cols; /* Cycle count */
-
-    // todo: parallel optimization
-    // implemented: transposed matrices (trans2, result) for faster access speed, loop designed to access elements linearly
-#pragma omp parallel for
-    for (size_t m = 0; m < op1->rows; ++m)
+    // implemented: transposed matrices (trans2, result) for faster access speed, loop designed to access elements sequentially
+    const size_t blk_size = 64 / sizeof(float); // 64 == common cache line size
+    const size_t ub1 = op1->rows;               // M
+    const size_t ub2 = op2->cols;               // K
+    const size_t ub3 = op1->cols;               // N
+#pragma omp parallel for simd
+    for (size_t m = 0; m < ub1; ++m)
     {
-#pragma omp parallel for
-        for (size_t k = 0; k < op2->cols; ++k)
+        size_t idx0 = m * r_cols;
+        for (size_t k = 0; k < ub2; ++k)
         {
+            size_t idx1 = m * ub3;
+            size_t idx2 = k * ub3;
             float result0 = 0;
-            for (size_t n = 0; n < c_cnt; ++n)
-            {
-                result0 += op1->arr[m * c_cnt + n] * trans2->arr[k * c_cnt + n];
-            }
-            newarr[m * r_cols + k] = result0;
+            for (size_t n = 0; n < ub3; ++n)
+                result0 += op1->arr[idx1++] * trans2->arr[idx2++];
+            newarr[idx0++] = result0;
         }
     }
 
@@ -491,8 +527,84 @@ matrix_errno multiply_matrix_ver_1(const matrix op1, const matrix op2, matrix *r
     return COMPLETED;
 }
 
+#ifdef __AVX2__
+#include <immintrin.h>
+#endif
+
+/* Horizontally sum a __m256 which stores 8 packed 32-bit precision fp */
+static inline float _mm256_hsum(__m256 a)
+{
+    __m256 t1 = _mm256_hadd_ps(a, a);
+    __m256 t2 = _mm256_hadd_ps(t1, t1);
+    __m128 t3 = _mm256_extractf128_ps(t2, 1);
+    __m128 t4 = _mm_add_ss(_mm256_castps256_ps128(t2), t3);
+    return _mm_cvtss_f32(t4);
+}
+
+/* Multiplying two matrices A (m * n) and B (n * k) where B is **tranposed**, and store the result in C.
+   A, B, C **must** be aligned on a 32-byte boundary. */
+static void
+_matrix_mul(float *A, float *B, float *C, int m, int n, int k)
+{
+    // implemented: transposed matrices (trans2, result) for faster access speed, loop designed to access elements sequentially
+    const size_t blk_size = 64 / sizeof(float); // 64 == common cache line size
+
+#pragma omp parallel for simd
+    for (size_t i = 0; i < m; ++i)
+    {
+        for (size_t u = 0; u < k; ++u)
+        {
+            float result = 0.0f;
+//==============
+// #ifndef __AVX2__
+// #define __AVX2__
+// #endif
+//==============
+#ifdef __AVX2__
+            float rst[8] = {};
+            __m256 r0 = _mm256_loadu_ps(rst);
+            size_t j;
+            for (j = 0; j < n - 7; j += 8)
+            {
+                __m256 u1 = _mm256_loadu_ps(A + i * n + j);
+                __m256 u2 = _mm256_loadu_ps(B + u * n + j);
+                __m256 r1 = _mm256_mul_ps(u1, u2);
+                r0 = _mm256_add_ps(r0, r1);
+            }
+            if (j != n)
+            {
+                if (n >= 8)
+                {
+                    result += _mm256_hsum(r0);
+                }
+                float *tmp1 = (float *)aligned_alloc(32, 8 * sizeof(float));
+                float *tmp2 = (float *)aligned_alloc(32, 8 * sizeof(float));
+                memcpy(tmp1, A + i * n + j, (n - j) * sizeof(float));
+                memcpy(tmp2, B + u * n + j, (n - j) * sizeof(float));
+                __m256 u1 = _mm256_load_ps(tmp1);
+                __m256 u2 = _mm256_load_ps(tmp2);
+                __m256 res = _mm256_mul_ps(u1, u2);
+                _mm256_store_ps(tmp1, res);
+                for (int i = 0; i < n - j; ++i)
+                    result += tmp1[i];
+                free(tmp1);
+                free(tmp2);
+            }
+#else
+#pragma omp simd reduction(+ \
+                           : result)
+            for (size_t j = 0; j < n; ++j)
+            {
+                result += A[i * n + j] * B[u * n + j];
+            }
+#endif
+            C[i * k + u] = result;
+        }
+    }
+}
+
 /* This function multiplies two matrices by first transposing the righthand matrix, using OpenMP and SIMD to parallelize computation, and then transposing the result.
-   This function transposes the matrices to gain linear access to elements.
+   This function transposes the matrices to gain sequential access to elements.
 
    Multiply two matrices and store the result in a third matrix.
    The result matrix can refer to either op1 or op2 at the same time, but the pointer to the result matrix cannot be NULL.
@@ -502,7 +614,8 @@ matrix_errno multiply_matrix_ver_1(const matrix op1, const matrix op2, matrix *r
    If errors occurred during the operation (for example, operand size unmatches), do nothing on the result matrix.
 
    Returns the corresonding errno code upon failure. */
-matrix_errno multiply_matrix_ver_2(const matrix op1, const matrix op2, matrix *result)
+matrix_errno
+multiply_matrix_ver_2(const matrix op1, const matrix op2, matrix *result)
 {
     if (op1 == NULL || op2 == NULL)
         return OP_NULL_PTR;
@@ -530,7 +643,7 @@ matrix_errno multiply_matrix_ver_2(const matrix op1, const matrix op2, matrix *r
             newarr = (*result)->arr;
     }
     /* Else prepare the result array */
-    else if ((newarr = (float *)malloc((r_rows * r_cols) * sizeof(float))) == NULL)
+    else if ((newarr = (float *)aligned_alloc(32, (r_rows * r_cols) * sizeof(float))) == NULL)
     {
         out_of_memory();
         return OUT_OF_MEMORY;
@@ -550,24 +663,13 @@ matrix_errno multiply_matrix_ver_2(const matrix op1, const matrix op2, matrix *r
         return tr_res;
     }
 
-    size_t c_cnt = op1->cols; /* Cycle count */
+    // implemented: transposed matrices (trans2, result) for faster access speed, loop designed to access elements sequentially
+    const size_t blk_size = 64 / sizeof(float); // 64 == common cache line size
+    const size_t ub1 = op1->rows;               // M
+    const size_t ub2 = op2->cols;               // K
+    const size_t ub3 = op1->cols;               // N
 
-    // todo: parallel optimization
-    // implemented: transposed matrices (trans2, result) for faster access speed, loop designed to access elements linearly
-#pragma omp parallel for
-    for (size_t m = 0; m < op1->rows; ++m)
-    {
-#pragma omp parallel for
-        for (size_t k = 0; k < op2->cols; ++k)
-        {
-            float result0 = 0;
-            for (size_t n = 0; n < c_cnt; ++n)
-            {
-                result0 += op1->arr[m * c_cnt + n] * trans2->arr[k * c_cnt + n];
-            }
-            newarr[m * r_cols + k] = result0;
-        }
-    }
+    _matrix_mul(op1->arr, trans2->arr, newarr, op1->rows, op1->cols, op2->cols);
 
     /* Clean up */
     delete_matrix(&trans2);
@@ -609,18 +711,22 @@ _do_emma_on_matrix_and_scalar(const matrix src, matrix *result, float val, op_co
     switch (code)
     {
     case ADD:
+#pragma omp parallel for
         for (size_t i = 0; i < (*result)->rows * (*result)->cols; ++i)
             (*result)->arr[i] += val;
         break;
     case SUBTRACT:
+#pragma omp parallel for
         for (size_t i = 0; i < (*result)->rows * (*result)->cols; ++i)
             (*result)->arr[i] -= val;
         break;
     case MULTIPLY:
+#pragma omp parallel for
         for (size_t i = 0; i < (*result)->rows * (*result)->cols; ++i)
             (*result)->arr[i] *= val;
         break;
     case DIVIDE:
+#pragma omp parallel for
         for (size_t i = 0; i < (*result)->rows * (*result)->cols; ++i)
             (*result)->arr[i] /= val;
         break;

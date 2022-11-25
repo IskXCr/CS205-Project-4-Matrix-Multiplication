@@ -26,9 +26,6 @@ typedef struct matrix_struct
        is (r * cols + c), where r is row index and c is column index, all starting from 0. */
     float *arr;
 
-    /* For reuse of structs */
-    struct matrix_struct *next; /* When this matrix is recycled, points to the next recycled element in a linked list. If not, next has garbage value */
-
 } matrix_struct;
 
 typedef enum matrix_errno

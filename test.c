@@ -8,6 +8,7 @@
 #include <math.h>
 #include <time.h>
 #include <omp.h>
+#include <cblas.h>
 
 /* Definition for ease of use */
 
@@ -105,19 +106,6 @@ void test_matrix_struct(void)
     assert(m1 == NULL);
     assert(m2->refs == 0);
     printf("reference and deletion test ok.\n");
-
-    /* Test recycling */
-    m0 = create_matrix(x, y);
-    assert(m0 == m2);
-    m2 = m0;
-    m0->refs = SZT_MAX;
-    assert((m1 = ref_matrix(m0)) == NULL); /* Test upper bound exceeded scenario */
-    m0->refs = 1;
-    assert(m2->refs == 1);
-    delete_matrix(&m0);
-    assert(m0 == NULL);
-    assert(m2->refs == 0);
-    printf("recycling test ok.\n");
 
     print_test_end("struct test");
 }
@@ -369,7 +357,7 @@ void test_matrix_mul_and_transpose(void)
     printf("transpose test ok.\n");
 
     assert(tmp2->rows == 9 && tmp2->cols == 8);
-    assert((err = multiply_matrix_ver_1(tmp1, tmp2, &tmp3)) == COMPLETED);
+    assert((err = multiply_matrix_ver_2(tmp1, tmp2, &tmp3)) == COMPLETED);
     assert(tmp3 != NULL);
     assert(tmp3 != tmp1 && tmp3 != tmp2);
 
@@ -385,30 +373,71 @@ void test_matrix_mul_and_transpose(void)
     print_test_end("Matrix multiplication test");
 }
 
-void test_matrix_mul_performance(void)
+static void _test_mat_mul_perf(size_t sz)
 {
     print_test_init("Randomized matrix multiplication performance test");
+    printf("target_size=%zu\n\n", sz);
 
-    matrix op1 = NULL, op2 = NULL, op3 = NULL;
+    matrix op1 = NULL, op2 = NULL, op3 = NULL, opo = NULL;
     matrix_errno err;
 
-    int sz = 2048;
     assert((op1 = create_matrix(sz, sz)) != NULL);
     assert((op2 = create_matrix(sz, sz)) != NULL);
+    assert((opo = create_matrix(sz, sz)) != NULL);
 
+    printf("Generate ...");
     srand(189231273); // Pick a whatever value
-    for (int i = 0; i < sz; ++i)
-        for (int j = 0; j < sz; ++j)
+    for (size_t i = 0; i < sz; ++i)
+        for (size_t j = 0; j < sz; ++j)
         {
             op1->arr[i * sz + j] = (float)rand();
             op2->arr[i * sz + j] = (float)rand();
         }
+    printf("ok.\n");
 
-    assert((err = multiply_matrix_plain(op1, op2, &op3)) == COMPLETED);
+    double start, end;
+
+    // start = omp_get_wtime();
+    // assert((err = multiply_matrix_plain(op1, op2, &op3)) == COMPLETED);
+    // end = omp_get_wtime();
+    // printf("Matrix Multiplication Plain: %lf s\n", end - start);
+
+    printf("Matrix Multiplication Ver 1 ...");
+    start = omp_get_wtime();
+    assert((err = multiply_matrix_ver_1(op1, op2, &op3)) == COMPLETED);
+    end = omp_get_wtime();
+    printf("%lf s\n", end - start);
+
+    printf("Matrix Multiplication Ver 2 ...");
+    start = omp_get_wtime();
+    assert((err = multiply_matrix_ver_2(op1, op2, &op3)) == COMPLETED);
+    end = omp_get_wtime();
+    printf("%lf s\n", end - start);
+
+    printf("OpenBLAS ...");
+    start = omp_get_wtime();
+    cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, sz, sz, sz, 1.0, op1->arr, sz, op2->arr, sz, 0.0, op3->arr, sz);
+    end = omp_get_wtime();
+    printf("%lf s\n", end - start);
 
     delete_matrix(&op1);
     delete_matrix(&op2);
     delete_matrix(&op3);
+    delete_matrix(&opo);
 
     print_test_end("Randomized matrix multiplication performance test");
+}
+
+void test_matrix_mul_performance(void)
+{
+    _test_mat_mul_perf(16);
+    _test_mat_mul_perf(32);
+    _test_mat_mul_perf(64);
+    _test_mat_mul_perf(128);
+    _test_mat_mul_perf(256);
+    _test_mat_mul_perf(512);
+    _test_mat_mul_perf(1024);
+    _test_mat_mul_perf(2048);
+    _test_mat_mul_perf(4096);
+    _test_mat_mul_perf(16384);
 }
