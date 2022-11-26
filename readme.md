@@ -660,11 +660,11 @@ _transpose_mat(float *src, float *dest, size_t r_offset, size_t c_offset,
 
    As the reader may notice, the performance bottleneck for the plain matrix multiplication is not CPU.
 
-   ![Plain multiplication](imgs\1.png)
+   ![Plain multiplication](imgs/1.png)
 
    For comparison, the CPU usage when ``Ver_2`` multiplication is being used is shown below.
 
-   ![Ver_1](imgs\2.png)
+   ![Ver_1](imgs/2.png)
 
    * Two intervals with full utilization of CPU in the graph are due to the optimized matrix multiplication and ``OpenBLAS``.
 
