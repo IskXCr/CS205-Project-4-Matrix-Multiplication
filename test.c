@@ -376,7 +376,7 @@ void test_matrix_mul_and_transpose(void)
 static void _test_mat_mul_perf(size_t sz)
 {
     print_test_init("Randomized matrix multiplication performance test");
-    printf("target_size=%zu\n\n", sz);
+    printf("target_size=%zu\n------------\n", sz);
 
     matrix op1 = NULL, op2 = NULL, op3 = NULL, opo = NULL;
     matrix_errno err;
@@ -385,7 +385,7 @@ static void _test_mat_mul_perf(size_t sz)
     assert((op2 = create_matrix(sz, sz)) != NULL);
     assert((opo = create_matrix(sz, sz)) != NULL);
 
-    printf("Generate ...");
+    printf("Generate...");
     srand(189231273); // Pick a whatever value
     for (size_t i = 0; i < sz; ++i)
         for (size_t j = 0; j < sz; ++j)
@@ -393,32 +393,40 @@ static void _test_mat_mul_perf(size_t sz)
             op1->arr[i * sz + j] = (float)rand();
             op2->arr[i * sz + j] = (float)rand();
         }
-    printf("ok.\n");
+    printf(" ok.\n");
 
     double start, end;
 
-    // start = omp_get_wtime();
-    // assert((err = multiply_matrix_plain(op1, op2, &op3)) == COMPLETED);
-    // end = omp_get_wtime();
-    // printf("Matrix Multiplication Plain: %lf s\n", end - start);
+    printf("Matrix Multiplication Plain...");
+    if (sz <= 4096)
+    {
+        start = omp_get_wtime();
+        assert((err = multiply_matrix_plain(op1, op2, &op3)) == COMPLETED);
+        end = omp_get_wtime();
+        printf(" %lf s\n", end - start);
+    }
+    else
+    {
+        printf(" Skipped due to processing time being longer than one hour.\n");
+    }
 
-    printf("Matrix Multiplication Ver 1 ...");
+    printf("Matrix Multiplication Ver 1...");
     start = omp_get_wtime();
     assert((err = multiply_matrix_ver_1(op1, op2, &op3)) == COMPLETED);
     end = omp_get_wtime();
-    printf("%lf s\n", end - start);
+    printf(" %lf s\n", end - start);
 
-    printf("Matrix Multiplication Ver 2 ...");
+    printf("Matrix Multiplication Ver 2...");
     start = omp_get_wtime();
     assert((err = multiply_matrix_ver_2(op1, op2, &op3)) == COMPLETED);
     end = omp_get_wtime();
-    printf("%lf s\n", end - start);
+    printf(" %lf s\n", end - start);
 
-    printf("OpenBLAS ...");
+    printf("OpenBLAS...");
     start = omp_get_wtime();
     cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, sz, sz, sz, 1.0, op1->arr, sz, op2->arr, sz, 0.0, op3->arr, sz);
     end = omp_get_wtime();
-    printf("%lf s\n", end - start);
+    printf(" %lf s\n", end - start);
 
     delete_matrix(&op1);
     delete_matrix(&op2);
@@ -430,14 +438,8 @@ static void _test_mat_mul_perf(size_t sz)
 
 void test_matrix_mul_performance(void)
 {
-    _test_mat_mul_perf(16);
-    _test_mat_mul_perf(32);
-    _test_mat_mul_perf(64);
-    _test_mat_mul_perf(128);
-    _test_mat_mul_perf(256);
-    _test_mat_mul_perf(512);
-    _test_mat_mul_perf(1024);
-    _test_mat_mul_perf(2048);
-    _test_mat_mul_perf(4096);
-    _test_mat_mul_perf(16384);
+    static const size_t threshold = 65536;
+    for (size_t sz = 16; sz <= threshold; sz *= 2)
+        for (int i = 0; i < 3; ++i)
+            _test_mat_mul_perf(sz);
 }

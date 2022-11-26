@@ -360,7 +360,7 @@ matrix_errno subtract_matrix(const matrix subtrahend, const matrix subtractor, m
     return _do_emma_on_matrices(subtrahend, subtractor, result, SUBTRACT);
 }
 
-/* This function multiplies two matrices plainly.
+/* This function multiplies two matrices in a plain way.
 
    Multiply two matrices and store the result in a third matrix.
    The result matrix can refer to either op1 or op2 at the same time, but the pointer to the result matrix cannot be NULL.
@@ -435,7 +435,7 @@ matrix_errno multiply_matrix_plain(const matrix op1, const matrix op2, matrix *r
     return COMPLETED;
 }
 
-/* This function multiplies two matrices by first transposing the righthand matrix, using OpenMP to parallelize computation, and then transposing the result.
+/* This function multiplies two matrices by first transposing the righthand matrix, using OpenMP to parallelize computation.
    This function transposes the matrices to gain sequential access to elements.
 
    Multiply two matrices and store the result in a third matrix.
@@ -603,7 +603,7 @@ _matrix_mul(float *A, float *B, float *C, int m, int n, int k)
     }
 }
 
-/* This function multiplies two matrices by first transposing the righthand matrix, using OpenMP and SIMD to parallelize computation, and then transposing the result.
+/* This function multiplies two matrices by first transposing the righthand matrix, using OpenMP and SIMD to parallelize computation.
    This function transposes the matrices to gain sequential access to elements.
 
    Multiply two matrices and store the result in a third matrix.
@@ -664,10 +664,6 @@ multiply_matrix_ver_2(const matrix op1, const matrix op2, matrix *result)
     }
 
     // implemented: transposed matrices (trans2, result) for faster access speed, loop designed to access elements sequentially
-    const size_t blk_size = 64 / sizeof(float); // 64 == common cache line size
-    const size_t ub1 = op1->rows;               // M
-    const size_t ub2 = op2->cols;               // K
-    const size_t ub3 = op1->cols;               // N
 
     _matrix_mul(op1->arr, trans2->arr, newarr, op1->rows, op1->cols, op2->cols);
 
